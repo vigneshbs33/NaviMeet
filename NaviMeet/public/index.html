@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NaviMeet - Smart Meeting Point Finder</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>NaviMeet</h1>
+        <p>Your Smart Meeting Point Optimizer</p>
+    </header>
+
+    <main>
+        <div class="container">
+            <h2>Enter the locations of all participants:</h2>
+            <div id="locations">
+                <div class="location-input">
+                    <input type="text" placeholder="Enter Location 1" class="location">
+                    <button class="remove-btn">❌</button>
+                </div>
+                <div class="location-input">
+                    <input type="text" placeholder="Enter Location 2" class="location">
+                    <button class="remove-btn">❌</button>
+                </div>
+            </div>
+            
+            <button id="addLocation">➕ Add Location</button>
+            <br><br>
+            
+            <h2>Choose Meeting Place Type:</h2>
+            <select id="placeType">
+                <option value="efficient" selected>Efficient Mode (Auto-detects Destination)</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="cafe">Café</option>
+                <option value="shopping_mall">Shopping Mall</option>
+                <option value="park">Park</option>
+                <option value="transit_station">Transit Station</option>
+                <option value="popular_places">Popular Places</option>
+            </select>
+
+            <h2>Destination (Optional):</h2>
+            <input type="text" id="destination" placeholder="Enter Destination (Optional)">
+
+            <button id="findMeetingPoint">Find Meeting Point</button>
+
+            <h2>Suggested Meeting Point:</h2>
+            <div id="meetingPointContainer">
+                <p id="meetingPoint">N/A</p>
+                <button id="changeMeetingPoint" style="display: none;">Change</button>
+                <button id="shareMeetingPoint" style="display: none;">Share</button>
+            </div>
+
+            <div id="map"></div>
+            <p id="mapError" style="color: red; display: none;">Failed to load map. Please check your internet or API key.</p>
+        </div>
+    </main>
+
+    <footer>
+        <p>© 2025 NaviMeet. All rights reserved.</p>
+    </footer>
+
+    <!-- Load the Google Maps API dynamically -->
+    <script type="module">
+        import { GOOGLE_MAPS_API_KEY } from '../src/config/env.js';
+        import { initMap, setLocations, setDestination, findEfficientMergePoint, updateMapWithPlace, changeMeetingPoint, shareMeetingPoint } from '../src/core/meetingPoint.js';
+
+        const autocompleteInstances = new Map();
+        let placesService;
+
+        // Step 1: Replace the API key in src/config/env.js with your own Google Maps API key before running.
+        // WARNING: This app uses Google Maps APIs (Maps JavaScript, Places, Directions), which may incur costs based on your API key usage. I, the developer, am not responsible for any charges, errors, or issues arising from API requests.
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker&loading=async&callback=initializeMap`;
+        script.defer = true;
+        script.onerror = () => {
+            console.error("Failed to load Google Maps API script.");
+            document.getElementById('mapError').style.display = 'block';
+        };
+        document.head.appendChild(script);
+
+        window.initializeMap = function() {
+            console.log("Google Maps API script loaded successfully.");
+            try {
+                const map = initMap();
+                placesService = new google.maps.places.PlacesService(map);
+                document.getElementById('mapError').style.display = 'none';
+
+                // Enable Autocomplete for initial location inputs
+                document.querySelectorAll('.location').forEach(input => {
+                    const autocomplete = new google.maps.places.Autocomplete(input, {
+                        fields: ['place_id', 'name']
+                    });
+                    autocomplete.addListener('place_changed', () => {
+                        const place = autocomplete.getPlace();
+                        if (!place.place_id) {
+                            input.value = '';
+                            alert("Please select a location from the suggestions.");
+                        }
+                    });
+                    autocompleteInstances.set(input, autocomplete);
+                });
+
+                // Enable Autocomplete for destination input
+                const destinationInput = document.getElementById('destination');
+                const destAutocomplete = new google.maps.places.Autocomplete(destinationInput, {
+                    fields: ['place_id', 'name']
+                });
+                destAutocomplete.addListener('place_changed', () => {
+                    const place = destAutocomplete.getPlace();
+                    if (!place.place_id) {
+                        destinationInput.value = '';
+                        alert("Please select a destination from the suggestions.");
+                    }
+                });
+                autocompleteInstances.set(destinationInput, destAutocomplete);
+
+            } catch (error) {
+                console.error("Map initialization failed:", error);
+                document.getElementById('mapError').style.display = 'block';
+            }
+        };
+
+        async function resolvePlaceIdToCoords(placeId) {
+            return new Promise((resolve, reject) => {
+                placesService.getDetails({ placeId, fields: ['geometry'] }, (place, status) => {
+                    if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry) {
+                        resolve({
+                            lat: place.geometry.location.lat(),
+                            lng: place.geometry.location.lng()
+                        });
+                    } else {
+                        reject(new Error(`Failed to resolve place_id: ${status}`));
+                    }
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const findMeetingPointBtn = document.getElementById('findMeetingPoint');
+            const changeMeetingPointBtn = document.getElementById('changeMeetingPoint');
+            const shareMeetingPointBtn = document.getElementById('shareMeetingPoint');
+            const addLocationBtn = document.getElementById('addLocation');
+            const locationsContainer = document.getElementById('locations');
+
+            if (!findMeetingPointBtn || !changeMeetingPointBtn || !shareMeetingPointBtn || !addLocationBtn || !locationsContainer) {
+                console.error("One or more elements not found in the DOM");
+                return;
+            }
+
+            // Step 2: Click "Add Location" to add more participant locations if needed.
+            addLocationBtn.onclick = () => {
+                const locationDiv = document.createElement('div');
+                locationDiv.className = 'location-input';
+                locationDiv.innerHTML = `
+                    <input type="text" placeholder="Enter Location ${locationsContainer.children.length + 1}" class="location">
+                    <button class="remove-btn">❌</button>
+                `;
+                locationsContainer.appendChild(locationDiv);
+
+                // Enable Autocomplete for new location inputs
+                if (google && google.maps && google.maps.places) {
+                    const newInput = locationDiv.querySelector('.location');
+                    const autocomplete = new google.maps.places.Autocomplete(newInput, {
+                        fields: ['place_id', 'name']
+                    });
+                    autocomplete.addListener('place_changed', () => {
+                        const place = autocomplete.getPlace();
+                        if (!place.place_id) {
+                            newInput.value = '';
+                            alert("Please select a location from the suggestions.");
+                        }
+                    });
+                    autocompleteInstances.set(newInput, autocomplete);
+                }
+
+                locationDiv.querySelector('.remove-btn').onclick = () => {
+                    if (locationsContainer.children.length > 2) {
+                        autocompleteInstances.delete(locationDiv.querySelector('.location'));
+                        locationsContainer.removeChild(locationDiv);
+                    } else {
+                        alert("At least two locations are required.");
+                    }
+                };
+            };
+
+            document.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.onclick = () => {
+                    if (locationsContainer.children.length > 2) {
+                        const input = btn.parentElement.querySelector('.location');
+                        autocompleteInstances.delete(input);
+                        locationsContainer.removeChild(btn.parentElement);
+                    } else {
+                        alert("At least two locations are required.");
+                    }
+                };
+            });
+
+            // Steps 3-5: 
+            // 3. Enter at least two participant locations using the autocomplete fields.
+            // 4. Optionally, enter a destination in the "Destination" field.
+            // 5. Select a meeting place type from the dropdown (e.g., "Efficient Mode").
+            // 6. Click "Find Meeting Point" to calculate and display the result.
+            findMeetingPointBtn.onclick = async () => {
+                const locationInputs = document.querySelectorAll('.location');
+                const destinationInput = document.getElementById('destination').value;
+                const placeType = document.getElementById('placeType').value;
+
+                if (locationInputs.length < 2) {
+                    alert("Please enter at least two locations.");
+                    return;
+                }
+
+                const locations = [];
+                for (const input of locationInputs) {
+                    const autocomplete = autocompleteInstances.get(input);
+                    const place = autocomplete ? autocomplete.getPlace() : null;
+                    if (place && place.place_id) {
+                        try {
+                            const coords = await resolvePlaceIdToCoords(place.place_id);
+                            locations.push({
+                                lat: coords.lat,
+                                lng: coords.lng,
+                                name: input.value || place.name || "Unknown Location"
+                            });
+                        } catch (error) {
+                            console.error("Failed to resolve location coordinates:", error);
+                            alert("Failed to resolve location coordinates. Please try again.");
+                            return;
+                        }
+                    } else {
+                        alert("Please select valid locations from the suggestions.");
+                        return;
+                    }
+                }
+
+                setLocations(locations);
+
+                if (destinationInput) {
+                    const destAutocomplete = autocompleteInstances.get(document.getElementById('destination'));
+                    const destPlace = destAutocomplete ? destAutocomplete.getPlace() : null;
+                    if (destPlace && destPlace.place_id) {
+                        try {
+                            const coords = await resolvePlaceIdToCoords(destPlace.place_id);
+                            setDestination({
+                                lat: coords.lat,
+                                lng: coords.lng,
+                                name: destinationInput || destPlace.name || "Unknown Destination"
+                            });
+                        } catch (error) {
+                            console.error("Failed to resolve destination coordinates:", error);
+                            alert("Failed to resolve destination coordinates. Please try again.");
+                            setDestination(null);
+                            return;
+                        }
+                    } else {
+                        alert("Please select a valid destination from the suggestions.");
+                        setDestination(null);
+                        return;
+                    }
+                } else {
+                    setDestination(null);
+                }
+
+                try {
+                    if (placeType === "efficient") {
+                        await findEfficientMergePoint();
+                    } else {
+                        await updateMapWithPlace(placeType);
+                    }
+                } catch (error) {
+                    console.error("Error finding meeting point:", error);
+                    document.getElementById('meetingPoint').innerHTML = "Error finding meeting point. Please try again.";
+                }
+            };
+
+            // Step 7: Click "Change Meeting Point" to cycle through alternative suggestions (if available).
+            changeMeetingPointBtn.onclick = changeMeetingPoint;
+
+            // Step 8: Click "Share Meeting Point" to copy or share the meeting point details.
+            shareMeetingPointBtn.onclick = shareMeetingPoint;
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'92a472393898bf68',t:'MTc0MzY0MDEwOS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
