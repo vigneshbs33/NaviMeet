@@ -9,7 +9,7 @@ Planning a meetup can be a headache—where’s a spot that works for everyone? 
 
 ---
 
-## ✨ Key Features  
+## ✨ **Current Features** (Prototype)  
 
 ✅ **Optimal Meeting Points**: Input multiple locations, and get a smart meetup spot tailored to your group.  
 ✅ **Change Meeting Point Button**: Cycle through alternative suggestions (e.g., different transit stops) with one click.  
@@ -20,6 +20,17 @@ Planning a meetup can be a headache—where’s a spot that works for everyone? 
   - 🚉 **Without a destination**: Finds a central transit hub.  
   - 🏁 **With a destination**: Picks a strategic merge point for group travel.  
 
+---
+
+## 🔥 **Upcoming Features**  
+
+🚧 **Live Tracking** – See **where your friends are in real time** and know exactly when you'll meet.  
+🚧 **AI-Powered Location Finding** – Let AI analyze factors like **distance, travel time, and traffic** to suggest the best **dynamic meeting points**.  
+🚧 **Live Traffic Updates** – Routes will **adjust dynamically** based on real-time traffic data.  
+🚧 **Reverse Routing (Efficient Splitting)** –  
+   - If two or more people **arrived together**, but now need to return to **separate locations**, NaviMeet will **find an efficient split point** for them to diverge smoothly.  
+   - Perfect for friends **leaving a meetup together** but heading home in different directions.  
+🚧 **Routes Based on Time & Efficiency** – NaviMeet will **suggest meeting points based on time constraints** and travel efficiency.  
 
 ---
 
